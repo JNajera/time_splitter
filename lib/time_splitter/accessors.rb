@@ -12,7 +12,13 @@ module TimeSplitter
         # default value for +#{attr}+ to modify without explicitely overriding
         # the attr_reader. Defaults to a Time object with all fields set to 0.
         define_method("#{attr}_or_new") do
-          self.send(attr) || options.fetch(:default, ->{ Time.new(0, 1, 1, 0, 0, 0, "+00:00") }).call
+          offset = "+00:00"
+          zone_name = Time.zone.try(:name)
+          unless zone_name.blank?
+            offset_secs = TZInfo::Timezone.get(zone_name).try(:current_period).try(:utc_total_offset)
+            offset = TimeSplitter::Accessors.seconds_to_offset(offset_secs) if offset_secs
+          end
+          self.send(attr) || options.fetch(:default, ->{ Time.new(0, 1, 1, 0, 0, 0, offset) }).call
         end
 
         # Writers
@@ -71,6 +77,10 @@ module TimeSplitter
           time && options[:time_format] ? time.strftime(options[:time_format]) : time
         end
       end
+    end
+
+    def self.seconds_to_offset(seconds)
+      [seconds.abs / 3600, seconds.abs / 60 % 60].map { |t| t.to_s.rjust(2,'0') }.join(':').prepend("++-"[seconds <=> 0])
     end
   end
 end
